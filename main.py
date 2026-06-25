@@ -1,13 +1,28 @@
 import time
 import json
+import os
 import random
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from google.cloud import pubsub_v1
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
+
+PROJECT_ID = os.environ.get("PROJECT_ID", "proyecto-defecto-local")
+TOPIC_ID = os.environ.get("TOPIC_ID", "random-numbers-topic")
+
+try:
+    # Inicializamos el cliente que se conecta con la red de Google
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(PROJECT_ID, TOPIC_ID)
+    print(f"[CONFIG] Conectado exitosamente al tópico: {topic_path}")
+except Exception as e:
+    publisher = None
+    topic_path = None
+    print(f"[ADVERTENCIA] No se pudo inicializar Pub/Sub (Modo Local): {e}")
 
 # =====================================================================
 # BANCO DE VARIABLES BIZARRAS (8 OPCIONES POR COLOR)
@@ -376,6 +391,26 @@ def oracle(request: Request, nombre: str = Form(...), numero: int = Form(...), c
         sacrificio=var_numeros["sacrificio"],
         recompensa=var_numeros["recompensa"]
     )
+
+    payload = {
+        "event_timestamp": datetime.utcnow().isoformat() + "Z",
+        "user_name": nombre.strip().upper(),
+        "input_number": numero,
+        "input_color": color,
+        "generated_story": historia_final
+    }
+
+    # Si estamos en Cloud Run y el cliente se inicializó bien, publicamos el mensaje
+    if publisher and topic_path:
+        try:
+            data_bytes = json.dumps(payload).encode("utf-8")
+            # Publica en el tópico de forma asíncrona
+            future = publisher.publish(topic_path, data_bytes)
+            print(f"[PUB/SUB] Mensaje enviado ID: {future.result()}")
+        except Exception as e:
+            print(f"[ERR] Error al publicar en Pub/Sub: {e}")
+    else:
+        print(f"[LOCAL LOG]: {json.dumps(payload)}")
 
     return templates.TemplateResponse("index.html", {
         "request": request,
