@@ -11,8 +11,9 @@ from google.cloud import pubsub_v1
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-PROJECT_ID = os.environ.get("PROJECT_ID", "proyecto-defecto-local")
-TOPIC_ID = os.environ.get("TOPIC_ID", "random-numbers-topic")
+#projectId y topicId son datos de la nube de Google. Por eso vienen cargados en las variables de entorno
+PROJECT_ID = os.environ.get("PROJECT_ID")
+TOPIC_ID = os.environ.get("TOPIC_ID")
 
 try:
     # Inicializamos el cliente que se conecta con la red de Google
@@ -396,15 +397,12 @@ def oracle(request: Request, nombre: str = Form(...), numero: int = Form(...), c
         "event_timestamp": datetime.utcnow().isoformat() + "Z",
         "user_name": nombre.strip().upper(),
         "input_number": numero,
-        "input_color": color,
-        "generated_story": historia_final
+        "input_color": color
     }
 
-    # Si estamos en Cloud Run y el cliente se inicializó bien, publicamos el mensaje
     if publisher and topic_path:
         try:
             data_bytes = json.dumps(payload).encode("utf-8")
-            # Publica en el tópico de forma asíncrona
             future = publisher.publish(topic_path, data_bytes)
             print(f"[PUB/SUB] Mensaje enviado ID: {future.result()}")
         except Exception as e:
